@@ -1,0 +1,15 @@
+{
+  "short_name": "CubanDomino",
+  "name": "Cuban Double-Nine Dominoes",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/351/351658.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1c1917",
+  "background_color": "#1c1917"
+}
