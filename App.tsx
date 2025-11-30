@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Play, RotateCcw, Menu, X, Trophy, Users } from 'lucide-react';
 import { GameState, Player, Tile, Move } from './types';
 import { generateDeck, shuffleDeck, determineStarter, getValidMoves, calculateBotMove, calculateScores, getTileSum, isDouble, areTilesEqual } from './utils/gameLogic';
@@ -18,12 +18,17 @@ const initialGameState: GameState = {
   passHistory: { 0: [], 1: [], 2: [], 3: [] }
 };
 
-const BOT_DELAY_MS = 1500;
+// Slower bot speed as requested
+const BOT_DELAY_MS = 3000;
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const [isSidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar toggle
+  const [boardScale, setBoardScale] = useState(1); // Auto-zoom scale
+  
   const scrollRef = useRef<HTMLDivElement>(null);
+  const boardContainerRef = useRef<HTMLDivElement>(null);
+  const boardContentRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -31,6 +36,25 @@ export default function App() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [gameState.logs]);
+
+  // Auto-Zoom Board Logic
+  useLayoutEffect(() => {
+    if (boardContainerRef.current && boardContentRef.current) {
+      const containerWidth = boardContainerRef.current.clientWidth;
+      const contentWidth = boardContentRef.current.scrollWidth;
+      const containerHeight = boardContainerRef.current.clientHeight;
+      const contentHeight = boardContentRef.current.scrollHeight;
+
+      // Calculate scale to fit width
+      const widthScale = Math.min(1, (containerWidth - 32) / contentWidth); // 32px padding buffer
+      
+      // Calculate scale to fit height (less critical usually, but good for safety)
+      const heightScale = Math.min(1, (containerHeight - 20) / contentHeight);
+
+      // Use the smaller scale to fit both dimensions, but prioritize width fit for snake
+      setBoardScale(widthScale);
+    }
+  }, [gameState.board, gameState.status, isSidebarOpen]);
 
   // Game Loop
   useEffect(() => {
@@ -80,7 +104,7 @@ export default function App() {
       if (validMoves.length === 0 && gameState.board.length > 0) {
         const timer = setTimeout(() => {
            handlePass(currentPlayer);
-        }, 1000);
+        }, 1500); // Slightly faster auto-pass for user than bot move
         return () => clearTimeout(timer);
       }
     }
@@ -252,7 +276,7 @@ export default function App() {
   const botRight = gameState.players[3];
 
   return (
-    <div className="h-screen w-screen bg-stone-900 text-stone-100 font-sans flex flex-col md:flex-row overflow-hidden select-none">
+    <div className="h-screen w-screen bg-stone-900 text-stone-100 font-sans flex flex-col md:flex-row overflow-hidden select-none touch-manipulation">
       
       {/* Mobile Top Bar */}
       <div className="md:hidden h-14 bg-stone-800 border-b border-stone-700 flex justify-between items-center px-4 shrink-0 z-30">
@@ -337,26 +361,32 @@ export default function App() {
         )}
 
         {/* Players Layout */}
-        <div className="flex-1 flex flex-col relative z-10 p-2 md:p-4 min-h-0">
+        <div className="flex-1 flex flex-col relative z-10 p-2 min-h-0">
           
           {/* Top: Partner (Bot 2) */}
-          <div className="h-20 md:h-24 shrink-0 flex justify-center items-start">
+          <div className="h-16 md:h-20 shrink-0 flex justify-center items-start">
              <PlayerArea player={botPartner} isActive={gameState.currentPlayerIndex === 2} />
           </div>
 
           {/* Middle: Left (Bot 1) - Board - Right (Bot 3) */}
-          <div className="flex-1 flex overflow-hidden min-h-0">
-             <div className="w-16 md:w-24 shrink-0 flex items-center justify-start z-10">
+          <div className="flex-1 flex overflow-hidden min-h-0 relative">
+             <div className="w-16 md:w-24 shrink-0 flex items-center justify-start z-10 pl-1">
                <PlayerArea player={botLeft} isActive={gameState.currentPlayerIndex === 1} vertical />
              </div>
 
-             {/* The Snake (Board) */}
-             <div className="flex-1 flex items-center justify-center p-1 md:p-2 overflow-hidden relative">
-                {/* Scrollable Container */}
-                <div className="w-full h-full overflow-x-auto overflow-y-hidden p-4 md:p-6 bg-emerald-800/50 rounded-2xl shadow-inner border border-emerald-700/30 flex items-center scrollbar-thin scrollbar-thumb-emerald-600">
-                   <div className="flex items-center mx-auto gap-0.5 min-w-min px-4">
+             {/* The Snake (Board) with Zoom-To-Fit */}
+             <div 
+               ref={boardContainerRef}
+               className="flex-1 flex items-center justify-center p-1 md:p-2 overflow-hidden relative"
+             >
+                {/* Scalable content wrapper */}
+                <div 
+                  className="bg-emerald-800/50 rounded-2xl shadow-inner border border-emerald-700/30 flex items-center justify-center transition-transform duration-300 ease-out p-4 md:p-12 min-w-min"
+                  style={{ transform: `scale(${boardScale})` }}
+                >
+                   <div ref={boardContentRef} className="flex items-center gap-0.5">
                       {visualBoard.length === 0 && gameState.status === 'playing' && (
-                        <div className="text-emerald-200/50 italic whitespace-nowrap">Waiting for start...</div>
+                        <div className="text-emerald-200/50 italic whitespace-nowrap text-lg">Waiting for start...</div>
                       )}
                       {visualBoard.map((tile, i) => (
                         <div key={i} className="flex-shrink-0">
@@ -371,35 +401,37 @@ export default function App() {
                 </div>
              </div>
 
-             <div className="w-16 md:w-24 shrink-0 flex items-center justify-end z-10">
+             <div className="w-16 md:w-24 shrink-0 flex items-center justify-end z-10 pr-1">
                 <PlayerArea player={botRight} isActive={gameState.currentPlayerIndex === 3} vertical />
              </div>
           </div>
 
-          {/* Bottom: User */}
-          <div className="h-32 md:h-40 shrink-0 flex flex-col justify-end items-center pb-2 md:pb-4">
+          {/* Bottom: User - Grid Layout for full visibility */}
+          <div className="shrink-0 flex flex-col justify-end items-center pb-2 pt-2">
              <div className={`
-                flex gap-1 md:gap-2 p-2 md:p-4 rounded-xl transition-all duration-300 max-w-full overflow-x-auto
+                w-full max-w-3xl p-2 md:p-4 rounded-xl transition-all duration-300
                 ${gameState.currentPlayerIndex === 0 ? 'bg-yellow-500/10 ring-2 ring-yellow-500/50 shadow-lg shadow-yellow-500/10' : 'bg-black/20'}
              `}>
-                {user && user.hand.map((tile, i) => {
-                  const isValid = gameState.currentPlayerIndex === 0 && gameState.status === 'playing' && 
-                                  getValidMoves([tile], gameState.leftEnd, gameState.rightEnd).length > 0;
-                  return (
-                    <div key={i} className={`${isValid ? '-mt-2 md:-mt-4' : ''} transition-all duration-200 flex-shrink-0`}>
-                      <DominoTile 
-                        tile={tile} 
-                        size="lg" // Could be responsive size if needed
-                        selectable={isValid}
-                        disabled={gameState.currentPlayerIndex !== 0 || gameState.status !== 'playing' || (!isValid && gameState.board.length > 0)}
-                        highlight={isValid}
-                        onClick={() => onUserTileClick(tile)}
-                      />
-                    </div>
-                  );
-                })}
+                <div className="grid grid-cols-5 md:grid-cols-10 gap-2 md:gap-4 place-items-center">
+                  {user && user.hand.map((tile, i) => {
+                    const isValid = gameState.currentPlayerIndex === 0 && gameState.status === 'playing' && 
+                                    getValidMoves([tile], gameState.leftEnd, gameState.rightEnd).length > 0;
+                    return (
+                      <div key={i} className={`${isValid ? '-mt-1 md:-mt-2 transform scale-110' : ''} transition-all duration-200`}>
+                        <DominoTile 
+                          tile={tile} 
+                          size="md" // Standard size, will wrap on mobile
+                          selectable={isValid}
+                          disabled={gameState.currentPlayerIndex !== 0 || gameState.status !== 'playing' || (!isValid && gameState.board.length > 0)}
+                          highlight={isValid}
+                          onClick={() => onUserTileClick(tile)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
              </div>
-             <div className="text-stone-300 font-bold mt-2 flex gap-2 items-center text-sm md:text-base">
+             <div className="text-stone-300 font-bold mt-2 flex gap-2 items-center text-sm md:text-base h-6">
                 <Users className="w-4 h-4" /> You {gameState.currentPlayerIndex === 0 && <span className="text-yellow-400 text-xs animate-bounce">(Your Turn)</span>}
              </div>
           </div>
@@ -461,8 +493,8 @@ const PlayerArea = ({ player, isActive, vertical }: { player: Player | undefined
   
   return (
     <div className={`
-      flex flex-col items-center gap-1 md:gap-2 transition-all duration-300
-      ${isActive ? 'scale-110' : 'opacity-70'}
+      flex flex-col items-center gap-1 transition-all duration-300
+      ${isActive ? 'scale-110 z-20' : 'opacity-70'}
     `}>
        {/* Avatar / Icon */}
        <div className={`
@@ -478,11 +510,11 @@ const PlayerArea = ({ player, isActive, vertical }: { player: Player | undefined
           ${vertical ? 'w-16 md:w-24' : ''}
        `}>
           <div className="text-white font-bold truncate hidden md:block">{player.name}</div>
-          <div className="text-stone-400">{player.hand.length} tiles</div>
+          <div className="text-stone-400 whitespace-nowrap">{player.hand.length} tiles</div>
        </div>
 
-       {/* Back of Tiles Visual */}
-       <div className="flex -space-x-1 h-4 md:h-6">
+       {/* Back of Tiles Visual - Compact stack */}
+       <div className="flex -space-x-2 h-4 md:h-6">
           {Array.from({ length: player.hand.length }).map((_, i) => (
              <div key={i} className="w-3 md:w-4 h-4 md:h-6 bg-stone-200 rounded-sm border border-stone-400 shadow-sm" />
           ))}
